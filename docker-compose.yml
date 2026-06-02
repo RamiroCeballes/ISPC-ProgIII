@@ -1,0 +1,64 @@
+services:
+  backend:
+    # ── Imagen ──────────────────────────────────────────────
+    image: python:3.13.7-slim       # Usa imagen de Docker Hub
+    # -- O bien, construye desde un Dockerfile local:
+    build:
+      context: ./backend          # Carpeta con el Dockerfile
+      dockerfile: Dockerfile      # Nombre del Dockerfile (default: 'Dockerfile')
+      args:                       # Build args (disponibles solo en build time)
+        ENV_NAME: produccion
+ 
+    # ── Nombre del contenedor ───────────────────────────────
+    container_name: backend_app   # Nombre fijo (evita nombres aleatorios)
+ 
+    # ── Puertos ─────────────────────────────────────────────
+    ports:
+      - "8000:8000"    # host:contenedor — expone al exterior
+    expose:
+      - "8000"         # Solo disponible para otros servicios en la red interna
+                       # (NO expone al host — más seguro)
+ 
+    # ── Variables de entorno ─────────────────────────────────
+    environment:
+      - DEBUG=False
+      - DB_HOST=postgres    # Nombre del servicio = hostname interno
+    env_file:
+      - .env               # Lee variables desde archivo .env
+ 
+    # ── Volúmenes ────────────────────────────────────────────
+    volumes:
+      - ./backend:/app          # Bind mount: carpeta local montada en contenedor
+ 
+    # ── Comando de arranque ──────────────────────────────────
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8000
+ 
+    # ── Dependencias ─────────────────────────────────────────
+    depends_on:
+      postgres:
+        condition: service_healthy   # Espera que postgres pase el healthcheck
+ 
+    # ── Healthcheck ──────────────────────────────────────────
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s   # Tiempo de gracia al arrancar
+ 
+    # ── Política de reinicio ─────────────────────────────────
+    restart: unless-stopped   # always | on-failure | no | unless-stopped
+ 
+    # ── Logging ──────────────────────────────────────────────
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_PASSWORD: test123
+    ports:
+      - "5432:5432"
