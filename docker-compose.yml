@@ -23,20 +23,26 @@ services:
     environment:
       - DEBUG=False
       - DB_HOST=postgres    # Nombre del servicio = hostname interno
+      - USE_REDIS_CHANNEL_LAYER=True
+      - REDIS_HOST=redis    # Nombre del servicio = hostname interno
+      - REDIS_PORT=6379
     env_file:
       - .env               # Lee variables desde archivo .env
- 
+
     # ── Volúmenes ────────────────────────────────────────────
     volumes:
       - ./backend:/app          # Bind mount: carpeta local montada en contenedor
- 
+
     # ── Comando de arranque ──────────────────────────────────
-    command: gunicorn app.wsgi:application --bind 0.0.0.0:8000
- 
+    # daphne en lugar de gunicorn: gunicorn (WSGI) no puede sostener WebSockets
+    command: daphne -b 0.0.0.0 -p 8000 backend.asgi:application
+
     # ── Dependencias ─────────────────────────────────────────
     depends_on:
       postgres:
         condition: service_healthy   # Espera que postgres pase el healthcheck
+      redis:
+        condition: service_healthy
  
     # ── Healthcheck ──────────────────────────────────────────
     healthcheck:
@@ -62,3 +68,14 @@ services:
       POSTGRES_PASSWORD: test123
     ports:
       - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_channels
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
