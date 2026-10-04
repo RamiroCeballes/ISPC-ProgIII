@@ -29,6 +29,28 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
+# Detrás de un balanceador (ALB) el esquema original viaja en este header.
+if config('USE_X_FORWARDED_PROTO', default=False, cast=bool):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Orígenes https habilitados para POST del admin y de los formularios.
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
+
+# Endurecimiento para producción sobre HTTPS. Una sola variable lo activa todo,
+# así el desarrollo local sigue funcionando sobre http sin tocar nada.
+SECURE_SSL = config('SECURE_SSL', default=False, cast=bool)
+
+if SECURE_SSL:
+    SECURE_SSL_REDIRECT = True
+    # El health check del balanceador llega por http interno: si se lo
+    # redirige a https, el target queda marcado como unhealthy.
+    SECURE_REDIRECT_EXEMPT = [r'^health/$', r'^health/ready/$']
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000, cast=int)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
 
 # Application definition
 
@@ -65,6 +87,7 @@ SITE_ID = 1
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -137,12 +160,29 @@ else:
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Si DB_HOST está definido se usa PostgreSQL (contenedor local o RDS);
+# si no, SQLite, que alcanza para desarrollo y para correr los tests.
+DB_HOST = config('DB_HOST', default='')
+
+if DB_HOST:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='backend_db'),
+            'USER': config('DB_USER', default='postgres'),
+            'PASSWORD': config('DB_PASSWORD', default=''),
+            'HOST': DB_HOST,
+            'PORT': config('DB_PORT', default='5432'),
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=60, cast=int),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -180,6 +220,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -199,7 +244,7 @@ REST_AUTH = {
     'USE_JWT': True,
     'JWT_AUTH_COOKIE': 'jwt-auth',
     'JWT_AUTH_REFRESH_COOKIE': 'jwt-refresh-token',
-    'JWT_AUTH_SECURE': False,  # Set to True in production with HTTPS
+    'JWT_AUTH_SECURE': SECURE_SSL,  # cookies solo por https cuando SECURE_SSL=True
     'JWT_AUTH_HTTPONLY': True,
 }
 
@@ -281,7 +326,12 @@ CALLBACK_URL_SCHEME = 'https' if not DEBUG else 'http'
 
 # Encrypted Fields
 ENCRYPTED_FIELD_KEY_DIR = BASE_DIR / 'keys'
-FIELD_ENCRYPTION_KEY = 'MxQLxX-ts7G61oK5hdo5twknFfg-6zAFQyD1-zz5Ass='
+# El 'or' cubre el caso de la variable definida pero vacía (copiar .env.example
+# tal cual), que si no rompería el cifrado al arrancar.
+FIELD_ENCRYPTION_KEY = (
+    config('FIELD_ENCRYPTION_KEY', default='')
+    or 'MxQLxX-ts7G61oK5hdo5twknFfg-6zAFQyD1-zz5Ass='
+)
 
 # Email Configuration
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')

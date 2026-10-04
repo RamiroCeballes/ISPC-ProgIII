@@ -1,61 +1,61 @@
+# Entorno local completo: Django (ASGI) + PostgreSQL + Redis.
+# La misma imagen que se construye acá es la que se sube a ECR.
+
 services:
   backend:
     # ── Imagen ──────────────────────────────────────────────
-    image: python:3.13.7-slim       # Usa imagen de Docker Hub
-    # -- O bien, construye desde un Dockerfile local:
+    # El contexto es la raíz del repo: ahí viven manage.py, requirements.txt
+    # y las apps que el Dockerfile necesita copiar.
     build:
-      context: ./backend          # Carpeta con el Dockerfile
-      dockerfile: Dockerfile      # Nombre del Dockerfile (default: 'Dockerfile')
-      args:                       # Build args (disponibles solo en build time)
+      context: .
+      dockerfile: Dockerfile
+      args:
         ENV_NAME: produccion
- 
-    # ── Nombre del contenedor ───────────────────────────────
-    container_name: backend_app   # Nombre fijo (evita nombres aleatorios)
- 
+    image: ispc-progiii-backend:local
+    container_name: backend_app
+
     # ── Puertos ─────────────────────────────────────────────
     ports:
-      - "8000:8000"    # host:contenedor — expone al exterior
-    expose:
-      - "8000"         # Solo disponible para otros servicios en la red interna
-                       # (NO expone al host — más seguro)
- 
-    # ── Variables de entorno ─────────────────────────────────
-    environment:
-      - DEBUG=False
-      - DB_HOST=postgres    # Nombre del servicio = hostname interno
-      - USE_REDIS_CHANNEL_LAYER=True
-      - REDIS_HOST=redis    # Nombre del servicio = hostname interno
-      - REDIS_PORT=6379
-    env_file:
-      - .env               # Lee variables desde archivo .env
+      - "8000:8000"    # host:contenedor
 
-    # ── Volúmenes ────────────────────────────────────────────
-    volumes:
-      - ./backend:/app          # Bind mount: carpeta local montada en contenedor
+    # ── Variables de entorno ─────────────────────────────────
+    # env_file aporta los secretos; environment pisa lo que es propio de
+    # correr en compose (hostnames internos de los servicios).
+    env_file:
+      - .env
+    environment:
+      DEBUG: "False"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      DB_HOST: postgres          # nombre del servicio = hostname interno
+      DB_PORT: "5432"
+      DB_NAME: backend_db
+      DB_USER: postgres
+      DB_PASSWORD: test123
+      USE_REDIS_CHANNEL_LAYER: "True"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
 
     # ── Comando de arranque ──────────────────────────────────
-    # daphne en lugar de gunicorn: gunicorn (WSGI) no puede sostener WebSockets
+    # daphne en lugar de gunicorn: gunicorn (WSGI) no sostiene WebSockets.
     command: daphne -b 0.0.0.0 -p 8000 backend.asgi:application
 
     # ── Dependencias ─────────────────────────────────────────
     depends_on:
       postgres:
-        condition: service_healthy   # Espera que postgres pase el healthcheck
+        condition: service_healthy
       redis:
         condition: service_healthy
- 
+
     # ── Healthcheck ──────────────────────────────────────────
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s   # Tiempo de gracia al arrancar
- 
-    # ── Política de reinicio ─────────────────────────────────
-    restart: unless-stopped   # always | on-failure | no | unless-stopped
- 
-    # ── Logging ──────────────────────────────────────────────
+      start_period: 40s
+
+    restart: unless-stopped
+
     logging:
       driver: "json-file"
       options:
@@ -63,11 +63,22 @@ services:
         max-file: "3"
 
   postgres:
-    image: postgres:latest
+    image: postgres:16-alpine
+    container_name: postgres_db
     environment:
+      POSTGRES_DB: backend_db
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: test123
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d backend_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -79,3 +90,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

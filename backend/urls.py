@@ -17,7 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+from backend.health import liveness, readiness
+
 urlpatterns = [
+    path('health/', liveness, name='health'),
+    path('health/ready/', readiness, name='health_ready'),
     path('admin/', admin.site.urls),
     path('api/', include('accounts.urls')),
     path('api/chat/', include('chat.urls')),

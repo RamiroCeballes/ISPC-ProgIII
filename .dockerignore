@@ -1,0 +1,48 @@
+# Control de versiones y metadatos
+.git
+.github
+.gitignore
+
+# Entornos virtuales locales
+.venv
+venv
+ENV
+env
+
+# Secretos: en producción llegan por variables de entorno (ECS task definition,
+# Secrets Manager o SSM Parameter Store), nunca horneados en la imagen.
+.env
+.env.*
+!.env.example
+
+# Base de datos local
+db.sqlite3
+*.sqlite3
+
+# Artefactos de Python
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.cache
+.mypy_cache
+
+# Estáticos: los regenera collectstatic dentro del build
+staticfiles
+media
+
+# Documentación y utilidades que no hacen falta en runtime
+DOCUMENTATION.md
+*.postman_collection.json
+setup.sh
+setup.bat
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.log

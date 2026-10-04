@@ -11,6 +11,10 @@ media/
 staticfiles/
 
 # Env
+.env
+.env.local
+.env.*
+!.env.example
 .venv/
 venv/
 ENV/
@@ -30,3 +34,9 @@ Thumbs.db
 **/migrations/*.pyc
 **/migrations/*.pyo
 **/migrations/__pycache__/
+
+# Docker
+.docker/
+
+# Claves de cifrado de campos
+keys/
